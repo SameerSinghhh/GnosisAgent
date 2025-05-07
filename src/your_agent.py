@@ -102,7 +102,7 @@ def fetch_news_articles(research_questions: list[str]):
             if x.get("link") and not any(youtube in x["link"].lower() for youtube in ["youtube.com", "youtu.be"])
         ]
         print(f"✅ [NewsRetrievalAgent] Found {len(links)} valid articles for '{question}'")
-        all_articles.extend(links[:3])  # Limit per question
+        all_articles.extend(links[:8])  # Increased from 3 to 8 articles per question
     
     return all_articles
 
@@ -123,7 +123,10 @@ def scrape_article_content(url: str):
                 timeout=10
             )
             response.raise_for_status()
-            return response.json().get("markdown", "")[:5000]
+            content = response.json().get("markdown", "")[:5000]
+            print("✅ [Firecrawl] Successfully scraped content")
+            print(f"📄 Preview: {content[:100]}...")
+            return content
         except requests.exceptions.RequestException as e:
             print(f"❌ [Firecrawl] Error: {str(e)}")
             return None
@@ -135,13 +138,23 @@ def scrape_article_content(url: str):
         print(f"🔹 [Tavily] Scraping: {url}")
         try:
             response = requests.post(
-                "https://api.tavily.com/v1/scrape",  # Updated endpoint
-                headers={"Authorization": f"Bearer {TAVILY_API_KEY}"},
-                json={"url": url},
+                "https://api.tavily.com/extract",  # ✅ CORRECT endpoint per Tavily docs
+                headers={
+                    "Authorization": f"Bearer {TAVILY_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "urls": [url],               # ✅ Tavily expects a list of URLs
+                    "include_images": False,     # optional, can leave out or set True
+                    "extract_depth": "basic"     # or "advanced" if you want deeper scraping
+                },
                 timeout=10
             )
             response.raise_for_status()
-            return response.json().get("content", "")[:5000]
+            content = response.json().get("content", "")[:5000]
+            print("✅ [Tavily] Successfully scraped content")
+            print(f"📄 Preview: {content[:100]}...")
+            return content
         except requests.exceptions.RequestException as e:
             print(f"❌ [Tavily] Error: {str(e)}")
             return None
@@ -169,9 +182,11 @@ def scrape_article_content(url: str):
             chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
             # Drop blank lines
             text = ' '.join(chunk for chunk in chunks if chunk)
-            return text[:5000]
+            content = text[:5000]
+            print("✅ [BeautifulSoup] Successfully scraped content")
+            print(f"📄 Preview: {content[:100]}...")
+            return content
         except requests.exceptions.RequestException as e:
-            print(f"❌ [BeautifulSoup] Error: {str(e)}")
             return None
 
     # Try each scraping method in order of preference
@@ -197,10 +212,13 @@ def analyze_articles(market_question: str, articles: list[str]):
         print("❌ [AnalysisAgent] No valid articles to analyze")
         return 0.5, 0.5, "No valid articles to analyze"
 
-    # Debug: Print the first few characters of each article
-    print(f"📄 [AnalysisAgent] Found {len(valid_articles)} articles to analyze")
-    for i, article in enumerate(valid_articles):
-        print(f"Article {i+1} preview: {article[:100]}...")
+    # Print summary of articles to analyze
+    print(f"\n📚 [AnalysisAgent] Found {len(valid_articles)} articles to analyze:")
+    for i, article in enumerate(valid_articles, 1):
+        print(f"\nArticle {i}/{len(valid_articles)}:")
+        print(f"{'='*80}")
+        print(f"{article[:200]}...")
+        print(f"{'='*80}")
 
     # Format articles with clear separation
     formatted_articles = []
@@ -269,7 +287,9 @@ def place_bet(probability: float):
 
 # 🔹 Define the Trading Agent
 class AutoGenAgent(DeployableTraderAgent):
-    bet_on_n_markets_per_run = 1  
+    bet_on_n_markets_per_run = 1
+    
+      
 
     def answer_binary_market(self, market: AgentMarket) -> ProbabilisticAnswer | None:
         research_questions = generate_research_questions(market.question)
